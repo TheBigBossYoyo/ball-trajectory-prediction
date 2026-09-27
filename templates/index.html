@@ -1,0 +1,1977 @@
+<!DOCTYPE html>
+<html lang="fr" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trajectory Simulation</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --bg-primary: #0a0a0f;
+            --bg-secondary: #12121a;
+            --bg-tertiary: #1a1a25;
+            --bg-card: #16161f;
+            --text-primary: #ffffff;
+            --text-secondary: #a0a0b0;
+            --text-muted: #606070;
+            --accent-primary: #6366f1;
+            --accent-secondary: #8b5cf6;
+            --accent-gradient: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            --success: #10b981;
+            --warning: #f59e0b;
+            --error: #ef4444;
+            --border: rgba(255, 255, 255, 0.08);
+            --shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+            --physics-color: #3b82f6;
+            --sensor-color: #10b981;
+            --lstm-color: #f43f5e;
+            --glow: 0 0 20px rgba(99, 102, 241, 0.3);
+        }
+        [data-theme="light"] {
+            --bg-primary: #f8fafc;
+            --bg-secondary: #ffffff;
+            --bg-tertiary: #f1f5f9;
+            --bg-card: #ffffff;
+            --text-primary: #0f172a;
+            --text-secondary: #475569;
+            --text-muted: #94a3b8;
+            --border: rgba(0, 0, 0, 0.08);
+            --shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
+            --glow: 0 0 20px rgba(99, 102, 241, 0.15);
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+        .header {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 56px;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 20px;
+            z-index: 100;
+        }
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-weight: 600;
+            font-size: 16px;
+        }
+        .logo-icon {
+            width: 32px;
+            height: 32px;
+            background: var(--accent-gradient);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+        }
+        .header-controls {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .toggle-btn {
+            padding: 6px 12px;
+            border-radius: 6px;
+            border: 1px solid var(--border);
+            background: transparent;
+            color: var(--text-secondary);
+            font-size: 12px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .toggle-btn:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+        .toggle-btn.active { background: var(--accent-primary); color: white; border-color: var(--accent-primary); }
+        .main-container {
+            display: flex;
+            margin-top: 56px;
+            height: calc(100vh - 56px);
+        }
+        .sidebar {
+            width: 280px;
+            background: var(--bg-secondary);
+            border-right: 1px solid var(--border);
+            padding: 16px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .section {
+            background: var(--bg-card);
+            border-radius: 12px;
+            padding: 14px;
+            border: 1px solid var(--border);
+        }
+        .section-title {
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+            margin-bottom: 12px;
+        }
+        .form-group { margin-bottom: 12px; }
+        .form-group:last-child { margin-bottom: 0; }
+        label {
+            display: block;
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--text-secondary);
+            margin-bottom: 6px;
+        }
+        select {
+            width: 100%;
+            padding: 10px 12px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            font-size: 13px;
+            font-family: inherit;
+        }
+        select:focus { outline: none; border-color: var(--accent-primary); }
+        .range-container { position: relative; }
+        .range-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 6px;
+        }
+        .range-label { font-size: 12px; font-weight: 500; color: var(--text-secondary); }
+        .range-value {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--accent-primary);
+            font-family: 'JetBrains Mono', monospace;
+        }
+        input[type="range"] {
+            width: 100%;
+            height: 4px;
+            border-radius: 2px;
+            background: var(--bg-tertiary);
+            appearance: none;
+            cursor: pointer;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            appearance: none;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: var(--accent-gradient);
+            cursor: pointer;
+        }
+        .checkbox-group { display: flex; flex-direction: column; gap: 8px; }
+        .checkbox-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 12px;
+            border-radius: 8px;
+            background: var(--bg-tertiary);
+            cursor: pointer;
+            transition: all 0.2s;
+            border: 2px solid transparent;
+        }
+        .checkbox-item:hover { background: var(--bg-primary); }
+        .checkbox-item.physics { border-color: var(--physics-color); }
+        .checkbox-item.sensor { border-color: var(--sensor-color); }
+        .checkbox-item.lstm { border-color: var(--lstm-color); }
+        .checkbox-item input { display: none; }
+        .checkbox-custom {
+            width: 16px;
+            height: 16px;
+            border-radius: 4px;
+            border: 2px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+            flex-shrink: 0;
+        }
+        .checkbox-item input:checked + .checkbox-custom {
+            background: var(--accent-gradient);
+            border-color: var(--accent-primary);
+        }
+        .checkbox-custom::after {
+            content: '✓';
+            color: white;
+            font-size: 10px;
+            font-weight: bold;
+            opacity: 0;
+        }
+        .checkbox-item input:checked + .checkbox-custom::after { opacity: 1; }
+        .checkbox-label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        .checkbox-dot { width: 8px; height: 8px; border-radius: 50%; }
+        .checkbox-dot.physics { background: var(--physics-color); }
+        .checkbox-dot.sensor { background: var(--sensor-color); }
+        .checkbox-dot.lstm { background: var(--lstm-color); }
+        .simulate-btn {
+            width: 100%;
+            padding: 14px 20px;
+            border-radius: 10px;
+            border: none;
+            background: var(--accent-gradient);
+            color: white;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+        .simulate-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 24px rgba(99, 102, 241, 0.4); }
+        .simulate-btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+        .content { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+        .tabs {
+            display: flex;
+            gap: 4px;
+            padding: 12px 20px;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+        }
+        .tab {
+            padding: 8px 16px;
+            border-radius: 6px;
+            border: none;
+            background: transparent;
+            color: var(--text-secondary);
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .tab:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+        .tab.active { background: var(--accent-primary); color: white; }
+        .view-container { flex: 1; position: relative; overflow: hidden; }
+        .view { position: absolute; inset: 0; display: none; padding: 20px; }
+        .view.active { display: flex; flex-direction: column; }
+        #canvas-3d {
+            width: 100%;
+            height: 100%;
+            border-radius: 12px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            touch-action: none;
+        }
+        .chart-container {
+            flex: 1;
+            background: var(--bg-card);
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            padding: 20px;
+            min-height: 0;
+        }
+        .legend-bar {
+            display: flex;
+            gap: 20px;
+            padding: 12px 20px;
+            background: var(--bg-card);
+            border-radius: 10px;
+            margin-bottom: 12px;
+            border: 1px solid var(--border);
+        }
+        .legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; }
+        .legend-ball {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            box-shadow: inset -2px -2px 4px rgba(0,0,0,0.3);
+        }
+        .legend-ball.physics { background: var(--physics-color); }
+        .legend-ball.sensor { background: var(--sensor-color); }
+        .legend-ball.lstm { background: var(--lstm-color); }
+        .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 12px; }
+        .stat-card {
+            background: var(--bg-card);
+            border-radius: 10px;
+            padding: 16px;
+            border: 1px solid var(--border);
+            text-align: center;
+        }
+        .stat-card.physics { border-left: 3px solid var(--physics-color); }
+        .stat-card.sensor { border-left: 3px solid var(--sensor-color); }
+        .stat-card.lstm { border-left: 3px solid var(--lstm-color); }
+        .stat-label {
+            font-size: 10px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 6px;
+        }
+        .stat-value { font-size: 22px; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
+        .stat-card.physics .stat-value { color: var(--physics-color); }
+        .stat-card.sensor .stat-value { color: var(--sensor-color); }
+        .stat-card.lstm .stat-value { color: var(--lstm-color); }
+        .loading-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.85);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            flex-direction: column;
+            gap: 16px;
+        }
+        .loading-overlay.active { display: flex; }
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid var(--bg-tertiary);
+            border-top-color: var(--accent-primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .loading-text { color: var(--text-secondary); font-size: 13px; }
+        .canvas-legend {
+            position: absolute;
+            bottom: 32px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 24px;
+            padding: 10px 20px;
+            background: rgba(0,0,0,0.7);
+            border-radius: 10px;
+            backdrop-filter: blur(8px);
+            z-index: 10;
+        }
+        .canvas-legend-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 11px;
+            font-weight: 500;
+            color: white;
+        }
+        .playback-controls {
+            position: absolute;
+            bottom: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            background: rgba(0,0,0,0.7);
+            border-radius: 25px;
+            backdrop-filter: blur(8px);
+            z-index: 10;
+        }
+        .playback-btn {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            border: none;
+            background: var(--accent-primary);
+            color: white;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+        }
+        .playback-btn:hover {
+            background: var(--accent-secondary);
+        }
+        .timeline-container {
+            width: 150px;
+        }
+        .timeline-container input {
+            width: 100%;
+            cursor: pointer;
+        }
+        .time-display {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            color: white;
+            min-width: 45px;
+        }
+        .toast-container {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 2000;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .toast {
+            padding: 12px 20px;
+            border-radius: 8px;
+            color: white;
+            font-size: 13px;
+            font-weight: 500;
+            animation: slideIn 0.3s ease, fadeOut 0.3s ease 2.7s forwards;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        }
+        .toast.error { background: var(--error); }
+        .toast.success { background: var(--success); }
+        .toast.warning { background: #f59e0b; }
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        @keyframes fadeOut {
+            from { opacity: 1; }
+            to { opacity: 0; }
+        }
+        .toggle-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 0;
+        }
+        .toggle-label { font-size: 12px; color: var(--text-secondary); }
+        .toggle-switch {
+            position: relative;
+            width: 36px;
+            height: 20px;
+            background: var(--bg-tertiary);
+            border-radius: 10px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        .toggle-switch.active { background: var(--accent-primary); }
+        .toggle-switch::after {
+            content: '';
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 16px;
+            height: 16px;
+            background: white;
+            border-radius: 50%;
+            transition: transform 0.3s;
+        }
+        .toggle-switch.active::after { transform: translateX(16px); }
+        .reset-btn {
+            width: 100%;
+            padding: 8px;
+            border-radius: 6px;
+            border: 1px solid var(--border);
+            background: transparent;
+            color: var(--text-secondary);
+            font-size: 11px;
+            font-weight: 500;
+            cursor: pointer;
+            margin-top: 8px;
+        }
+        .reset-btn:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: var(--bg-primary); }
+        ::-webkit-scrollbar-thumb { background: var(--bg-tertiary); border-radius: 3px; }
+
+        /* Responsive design for mobile */
+        @media (max-width: 768px) {
+            .main-container {
+                flex-direction: column;
+            }
+            .sidebar {
+                width: 100%;
+                height: auto;
+                max-height: 35vh;
+                border-right: none;
+                border-bottom: 1px solid var(--border);
+                overflow-y: auto;
+            }
+            .content {
+                height: 60vh;
+            }
+            .tabs {
+                flex-wrap: wrap;
+            }
+            .tab {
+                flex: 1;
+                text-align: center;
+            }
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+            .playback-controls {
+                width: calc(100% - 24px);
+                max-width: 400px;
+                bottom: 70px;
+                padding: 10px 12px;
+                justify-content: center;
+            }
+            .timeline-container {
+                flex: 1;
+                min-width: 100px;
+            }
+            .canvas-legend {
+                bottom: 16px;
+                flex-wrap: wrap;
+                gap: 8px;
+                padding: 6px 10px;
+                font-size: 10px;
+            }
+            .sidebar-toggle {
+                display: flex;
+            }
+            .sidebar {
+                position: fixed;
+                top: 56px;
+                left: 0;
+                right: 0;
+                z-index: 50;
+                transition: transform 0.3s ease, max-height 0.3s ease;
+                max-height: 45vh;
+                overflow-y: auto;
+            }
+            .sidebar.collapsed {
+                transform: translateY(-100%);
+                max-height: 0;
+                overflow: hidden;
+                border-bottom: none;
+            }
+            .content {
+                height: calc(100vh - 56px);
+                transition: height 0.3s ease;
+            }
+        }
+
+        /* Sidebar toggle button */
+        .sidebar-toggle {
+            display: none;
+            position: fixed;
+            top: 64px;
+            right: 12px;
+            z-index: 60;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            border: 1px solid var(--border);
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            font-size: 18px;
+            cursor: pointer;
+            align-items: center;
+            justify-content: center;
+            box-shadow: var(--shadow);
+            transition: transform 0.3s ease;
+        }
+        .sidebar-toggle:hover {
+            background: var(--bg-tertiary);
+        }
+        .sidebar-toggle.rotated {
+            transform: rotate(180deg);
+        }
+
+        /* Zoom controls for desktop */
+        .zoom-controls {
+            position: absolute;
+            bottom: 140px;
+            right: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            z-index: 10;
+        }
+        .zoom-btn {
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            font-size: 20px;
+            font-weight: bold;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            backdrop-filter: blur(8px);
+            transition: background 0.2s;
+        }
+        .zoom-btn:hover {
+            background: var(--accent-primary);
+        }
+        @media (max-width: 768px) {
+            .zoom-controls {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="logo">
+            <div class="logo-icon">🎯</div>
+            <span data-i18n="title">Trajectory Simulation</span>
+        </div>
+        <div class="header-controls">
+            <button class="toggle-btn" id="lang-en" onclick="setLanguage('en')">EN</button>
+            <button class="toggle-btn active" id="lang-fr" onclick="setLanguage('fr')">FR</button>
+            <button class="toggle-btn active" id="theme-light" onclick="setTheme('light')">☀️</button>
+            <button class="toggle-btn" id="theme-dark" onclick="setTheme('dark')">🌙</button>
+        </div>
+    </header>
+    <button class="sidebar-toggle" id="sidebar-toggle" onclick="toggleSidebar()">
+        <span id="sidebar-toggle-icon">&#9660;</span>
+    </button>
+    <div class="main-container">
+        <aside class="sidebar">
+            <div class="section">
+                <div class="section-title" data-i18n="ball_settings">Ball Settings</div>
+                <div class="form-group">
+                    <label data-i18n="ball_type">Ball Type</label>
+                    <select id="ball-select">
+                        <option value="steel">Steel Ball</option>
+                        <option value="rubber">Rubber Ball</option>
+                        <option value="ping_pong">Ping-Pong Ball</option>
+                        <option value="tennis">Tennis Ball</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <div class="range-container">
+                        <div class="range-header">
+                            <span class="range-label" data-i18n="mass">Mass</span>
+                            <span class="range-value" id="mass-value">59 g</span>
+                        </div>
+                        <input type="range" id="mass-slider" min="1" max="200" value="59" step="1" oninput="updateSlider('mass')">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <div class="range-container">
+                        <div class="range-header">
+                            <span class="range-label" data-i18n="drop_height">Drop Height</span>
+                            <span class="range-value" id="height-value">67 cm</span>
+                        </div>
+                        <input type="range" id="height-slider" min="10" max="200" value="67" oninput="updateSlider('height')">
+                    </div>
+                </div>
+            </div>
+            <div class="section">
+                <div class="section-title" data-i18n="physics_settings">Physics Settings</div>
+                <div class="form-group">
+                    <div class="range-container">
+                        <div class="range-header">
+                            <span class="range-label" data-i18n="gravity">Gravity</span>
+                            <span class="range-value" id="gravity-value">9.81 m/s²</span>
+                        </div>
+                        <input type="range" id="gravity-slider" min="1" max="20" value="9.81" step="0.01" oninput="updateSlider('gravity')">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <div class="range-container">
+                        <div class="range-header">
+                            <span class="range-label" data-i18n="restitution">Restitution</span>
+                            <span class="range-value" id="restitution-value">0.85</span>
+                        </div>
+                        <input type="range" id="restitution-slider" min="0" max="1" value="0.85" step="0.01" oninput="updateSlider('restitution')">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <div class="range-container">
+                        <div class="range-header">
+                            <span class="range-label" data-i18n="initial_velocity">Initial Velocity</span>
+                            <span class="range-value" id="velocity-value">0.00 m/s</span>
+                        </div>
+                        <input type="range" id="velocity-slider" min="-3" max="3" value="0" step="0.1" oninput="updateSlider('velocity')">
+                    </div>
+                </div>
+                <div class="toggle-row">
+                    <span class="toggle-label" data-i18n="air_drag">Air Drag</span>
+                    <div class="toggle-switch active" id="drag-toggle" onclick="toggleSwitch('drag')"></div>
+                </div>
+                <button class="reset-btn" onclick="resetPhysics()" data-i18n="reset_physics">Reset to Default</button>
+            </div>
+            <div class="section">
+                <div class="section-title" data-i18n="model_settings">Model Settings</div>
+                <div class="form-group">
+                    <div class="range-container">
+                        <div class="range-header">
+                            <span class="range-label" data-i18n="lstm_blend">LSTM Blend</span>
+                            <span class="range-value" id="lstm-blend-value">0.50</span>
+                        </div>
+                        <input type="range" id="lstm-blend-slider" min="0" max="1" value="0.5" step="0.01" oninput="updateSlider('lstm-blend')">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <div class="range-container">
+                        <div class="range-header">
+                            <span class="range-label" data-i18n="anim_speed">Animation Speed</span>
+                            <span class="range-value" id="anim-speed-value">2x</span>
+                        </div>
+                        <input type="range" id="anim-speed-slider" min="1" max="10" value="2" step="1" oninput="updateAnimSpeed()">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <div class="range-container">
+                        <div class="range-header">
+                            <span class="range-label" data-i18n="ball_size">Ball Size</span>
+                            <span class="range-value" id="ball-size-value">1.0x</span>
+                        </div>
+                        <input type="range" id="ball-size-slider" min="1" max="3" value="1" step="0.1" oninput="updateBallSize()">
+                    </div>
+                </div>
+            </div>
+            <div class="section">
+                <div class="section-title" data-i18n="models">Active Models</div>
+                <div class="checkbox-group">
+                    <label class="checkbox-item physics">
+                        <input type="checkbox" id="enable-physics" checked>
+                        <span class="checkbox-custom"></span>
+                        <span class="checkbox-label">
+                            <span class="checkbox-dot physics"></span>
+                            <span data-i18n="physics_model">Physics</span>
+                        </span>
+                    </label>
+                    <label class="checkbox-item sensor">
+                        <input type="checkbox" id="enable-sensor" checked>
+                        <span class="checkbox-custom"></span>
+                        <span class="checkbox-label">
+                            <span class="checkbox-dot sensor"></span>
+                            <span data-i18n="sensor_data">Sensor</span>
+                        </span>
+                    </label>
+                </div>
+                <div class="form-group" style="margin-top: 10px;">
+                    <label data-i18n="sensor_dataset">Sensor Dataset</label>
+                    <select id="dataset-select">
+                        <option value="data.csv">data.csv (Original)</option>
+                        <option value="data2.csv">data2.csv (Experiment 2)</option>
+                        <option value="data3.csv">data3.csv (Experiment 3)</option>
+                    </select>
+                </div>
+                <div class="checkbox-group" style="margin-top: 8px;">
+                    <label class="checkbox-item lstm">
+                        <input type="checkbox" id="enable-lstm" checked>
+                        <span class="checkbox-custom"></span>
+                        <span class="checkbox-label">
+                            <span class="checkbox-dot lstm"></span>
+                            <span data-i18n="lstm_prediction">LSTM AI</span>
+                        </span>
+                    </label>
+                </div>
+            </div>
+            <button class="simulate-btn" id="simulate-btn" onclick="runSimulation()">
+                <span>▶</span>
+                <span data-i18n="simulate">SIMULATE</span>
+            </button>
+        </aside>
+        <main class="content">
+            <div class="tabs">
+                <button class="tab active" onclick="switchView('3d')" data-i18n="view_3d">3D Simulation</button>
+                <button class="tab" onclick="switchView('2d')" data-i18n="view_2d">2D Graph</button>
+                <button class="tab" onclick="switchView('stats')" data-i18n="view_stats">Statistics</button>
+            </div>
+            <div class="view-container">
+                <div class="view active" id="view-3d">
+                    <canvas id="canvas-3d"></canvas>
+                    <div class="canvas-legend">
+                        <div class="canvas-legend-item">
+                            <div class="legend-ball physics"></div>
+                            <span data-i18n="physics_model">Physics</span>
+                        </div>
+                        <div class="canvas-legend-item">
+                            <div class="legend-ball sensor"></div>
+                            <span data-i18n="sensor_data">Sensor</span>
+                        </div>
+                        <div class="canvas-legend-item">
+                            <div class="legend-ball lstm"></div>
+                            <span data-i18n="lstm_prediction">LSTM AI</span>
+                        </div>
+                    </div>
+                    <div class="playback-controls">
+                        <button class="playback-btn" id="play-pause-btn" onclick="togglePlayPause()">
+                            <span id="play-icon">&#10074;&#10074;</span>
+                        </button>
+                        <button class="playback-btn" onclick="restartAnimation()">&#9198;</button>
+                        <div class="timeline-container">
+                            <input type="range" id="timeline-slider" min="0" max="100" value="0"
+                                   oninput="scrubTimeline(this.value)">
+                        </div>
+                        <span class="time-display" id="current-time">0.00s</span>
+                    </div>
+                    <div class="zoom-controls">
+                        <button class="zoom-btn" onclick="zoomIn()">+</button>
+                        <button class="zoom-btn" onclick="zoomOut()">&minus;</button>
+                    </div>
+                </div>
+                <div class="view" id="view-2d">
+                    <div class="legend-bar">
+                        <div class="legend-item"><div class="legend-ball physics"></div><span data-i18n="physics_model">Physics</span></div>
+                        <div class="legend-item"><div class="legend-ball sensor"></div><span data-i18n="sensor_data">Sensor</span></div>
+                        <div class="legend-item"><div class="legend-ball lstm"></div><span data-i18n="lstm_prediction">LSTM AI</span></div>
+                    </div>
+                    <div class="chart-container"><canvas id="chart-2d"></canvas></div>
+                </div>
+                <div class="view" id="view-stats">
+                    <div class="stats-grid">
+                        <div class="stat-card physics">
+                            <div class="stat-label" data-i18n="physics_time">Physics Time</div>
+                            <div class="stat-value" id="stat-physics-time">--</div>
+                        </div>
+                        <div class="stat-card sensor">
+                            <div class="stat-label" data-i18n="sensor_time">Sensor Time</div>
+                            <div class="stat-value" id="stat-sensor-time">--</div>
+                        </div>
+                        <div class="stat-card lstm">
+                            <div class="stat-label" data-i18n="lstm_time">LSTM Time</div>
+                            <div class="stat-value" id="stat-lstm-time">--</div>
+                        </div>
+                    </div>
+                    <div class="stats-grid">
+                        <div class="stat-card physics">
+                            <div class="stat-label" data-i18n="bounces">Bounces</div>
+                            <div class="stat-value" id="stat-physics-bounces">--</div>
+                        </div>
+                        <div class="stat-card sensor">
+                            <div class="stat-label" data-i18n="bounces">Bounces</div>
+                            <div class="stat-value" id="stat-sensor-bounces">--</div>
+                        </div>
+                        <div class="stat-card lstm">
+                            <div class="stat-label" data-i18n="bounces">Bounces</div>
+                            <div class="stat-value" id="stat-lstm-bounces">--</div>
+                        </div>
+                    </div>
+                    <div class="chart-container"><canvas id="chart-comparison"></canvas></div>
+                </div>
+            </div>
+        </main>
+    </div>
+    <div class="loading-overlay" id="loading">
+        <div class="spinner"></div>
+        <div class="loading-text" data-i18n="simulating">Simulating...</div>
+    </div>
+    <script>
+        const translations = {
+            en: {
+                title: "Trajectory Simulation",
+                ball_settings: "Ball Settings",
+                ball_type: "Ball Type",
+                mass: "Mass",
+                drop_height: "Drop Height",
+                physics_settings: "Physics Settings",
+                gravity: "Gravity",
+                restitution: "Restitution",
+                initial_velocity: "Initial Velocity",
+                air_drag: "Air Drag",
+                reset_physics: "Reset to Default",
+                model_settings: "Model Settings",
+                lstm_blend: "LSTM Blend",
+                anim_speed: "Animation Speed",
+                ball_size: "Ball Size",
+                models: "Active Models",
+                physics_model: "Physics",
+                sensor_data: "Sensor",
+                lstm_prediction: "LSTM AI",
+                simulate: "SIMULATE",
+                sensor_dataset: "Sensor Dataset",
+                view_3d: "3D Simulation",
+                view_2d: "2D Graph",
+                view_stats: "Statistics",
+                physics_time: "Physics Time",
+                sensor_time: "Sensor Time",
+                lstm_time: "LSTM Time",
+                bounces: "Bounces",
+                simulating: "Simulating..."
+            },
+            fr: {
+                title: "Simulation de Trajectoire",
+                ball_settings: "Paramètres Balle",
+                ball_type: "Type de Balle",
+                mass: "Masse",
+                drop_height: "Hauteur de Chute",
+                physics_settings: "Paramètres Physique",
+                gravity: "Gravité",
+                restitution: "Restitution",
+                initial_velocity: "Vitesse Initiale",
+                air_drag: "Traînée Air",
+                reset_physics: "Réinitialiser",
+                model_settings: "Paramètres Modèle",
+                lstm_blend: "Mélange LSTM",
+                anim_speed: "Vitesse Animation",
+                ball_size: "Taille Balle",
+                models: "Modèles Actifs",
+                physics_model: "Physique",
+                sensor_data: "Capteur",
+                lstm_prediction: "IA LSTM",
+                simulate: "SIMULER",
+                sensor_dataset: "Jeu de Données",
+                view_3d: "Simulation 3D",
+                view_2d: "Graphique 2D",
+                view_stats: "Statistiques",
+                physics_time: "Temps Physique",
+                sensor_time: "Temps Capteur",
+                lstm_time: "Temps LSTM",
+                bounces: "Rebonds",
+                simulating: "Simulation..."
+            }
+        };
+        let currentLang = 'fr';
+        let currentTheme = 'light';
+        let dragEnabled = true;
+        function setLanguage(lang) {
+            currentLang = lang;
+            document.querySelectorAll('[data-i18n]').forEach(el => {
+                const key = el.getAttribute('data-i18n');
+                if (translations[lang][key]) el.textContent = translations[lang][key];
+            });
+            document.getElementById('lang-en').classList.toggle('active', lang === 'en');
+            document.getElementById('lang-fr').classList.toggle('active', lang === 'fr');
+        }
+        function setTheme(theme) {
+            currentTheme = theme;
+            document.documentElement.setAttribute('data-theme', theme);
+            document.getElementById('theme-light').classList.toggle('active', theme === 'light');
+            document.getElementById('theme-dark').classList.toggle('active', theme === 'dark');
+            if (scene) updateSceneTheme();
+            if (chart2D) updateChartTheme();
+        }
+        function updateSlider(name) {
+            const sliders = {
+                'mass': { el: 'mass-slider', display: 'mass-value', unit: ' g', fixed: 0 },
+                'height': { el: 'height-slider', display: 'height-value', unit: ' cm', fixed: 0 },
+                'gravity': { el: 'gravity-slider', display: 'gravity-value', unit: ' m/s²', fixed: 2 },
+                'restitution': { el: 'restitution-slider', display: 'restitution-value', unit: '', fixed: 2 },
+                'velocity': { el: 'velocity-slider', display: 'velocity-value', unit: ' m/s', fixed: 2 },
+                'lstm-blend': { el: 'lstm-blend-slider', display: 'lstm-blend-value', unit: '', fixed: 2 }
+            };
+            const config = sliders[name];
+            const value = parseFloat(document.getElementById(config.el).value);
+            document.getElementById(config.display).textContent = value.toFixed(config.fixed) + config.unit;
+
+            // Trigger validation on mass or height change
+            if (name === 'mass' || name === 'height') {
+                validateSensorConstraints();
+            }
+        }
+        function updateAnimSpeed() {
+            animationSpeed = parseInt(document.getElementById('anim-speed-slider').value);
+            document.getElementById('anim-speed-value').textContent = animationSpeed + 'x';
+        }
+        function toggleSwitch(name) {
+            if (name === 'drag') {
+                dragEnabled = !dragEnabled;
+                document.getElementById('drag-toggle').classList.toggle('active', dragEnabled);
+            }
+        }
+        function toggleSidebar() {
+            const sidebar = document.querySelector('.sidebar');
+            const toggle = document.getElementById('sidebar-toggle');
+            const icon = document.getElementById('sidebar-toggle-icon');
+            sidebar.classList.toggle('collapsed');
+            toggle.classList.toggle('rotated');
+            icon.innerHTML = sidebar.classList.contains('collapsed') ? '&#9650;' : '&#9660;';
+        }
+        function updateBallSize() {
+            ballVisualScale = parseFloat(document.getElementById('ball-size-slider').value);
+            document.getElementById('ball-size-value').textContent = ballVisualScale.toFixed(1) + 'x';
+            ['physics', 'sensor', 'lstm'].forEach(key => {
+                if (balls[key] && balls[key].userData.baseRadius) {
+                    const r = balls[key].userData.baseRadius * ballVisualScale;
+                    const mesh = balls[key].userData.mesh;
+                    if (mesh) {
+                        mesh.scale.set(r, r, r);
+                    }
+                    if (ballGlows[key]) {
+                        const glowSize = r * 4.0;
+                        ballGlows[key].scale.set(glowSize, glowSize, 1);
+                    }
+                }
+            });
+        }
+        function zoomIn() {
+            camRadius = Math.max(1.5, camRadius - 0.5);
+            if (window.updateCam) window.updateCam();
+        }
+        function zoomOut() {
+            camRadius = Math.min(8, camRadius + 0.5);
+            if (window.updateCam) window.updateCam();
+        }
+        function resetPhysics() {
+            document.getElementById('gravity-slider').value = 9.81;
+            document.getElementById('restitution-slider').value = 0.85;
+            document.getElementById('velocity-slider').value = 0;
+            dragEnabled = true;
+            document.getElementById('drag-toggle').classList.add('active');
+            updateSlider('gravity');
+            updateSlider('restitution');
+            updateSlider('velocity');
+        }
+        let scene, camera, renderer;
+        let balls = { physics: null, sensor: null, lstm: null };
+        let ballGlows = { physics: null, sensor: null, lstm: null };
+        let trajectoryLines = { physics: null, sensor: null, lstm: null };
+        let trailParticles = { physics: [], sensor: [], lstm: [] };
+        let trajectoryData = null;
+        let animationIndex = 0;
+        let isAnimating = false;
+        let animationSpeed = 2; // Default to 2x (which is effectively 1x real-time with the 0.5 scale)
+        let ballVisualScale = 1.0;
+        let camRadius = 3.5;
+        const BALL_COLORS = { physics: 0x3b82f6, sensor: 0x10b981, lstm: 0xf43f5e };
+        const BALL_POSITIONS = { physics: 0, sensor: -0.4, lstm: 0.4 };
+        const MAX_TRAIL_POINTS = 50;
+        // Track previous y positions for bounce detection
+        const prevYPositions = { physics: 0, sensor: 0, lstm: 0 };
+        const wasDescending = { physics: false, sensor: false, lstm: false };
+        function init3D() {
+            const canvas = document.getElementById('canvas-3d');
+            const container = canvas.parentElement;
+            scene = new THREE.Scene();
+            updateSceneTheme();
+            camera = new THREE.PerspectiveCamera(50, container.clientWidth / container.clientHeight, 0.1, 100);
+            camera.position.set(2.5, 1.5, 2.5);
+            camera.lookAt(0, 0.4, 0);
+            renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            renderer.toneMappingExposure = 1.2;
+
+            // Enhanced ambient lighting
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+            scene.add(ambientLight);
+
+            // Main directional light with shadows
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.9);
+            directionalLight.position.set(5, 10, 5);
+            directionalLight.castShadow = true;
+            directionalLight.shadow.mapSize.width = 2048;
+            directionalLight.shadow.mapSize.height = 2048;
+            directionalLight.shadow.camera.near = 0.5;
+            directionalLight.shadow.camera.far = 50;
+            directionalLight.shadow.bias = -0.0001;
+            scene.add(directionalLight);
+
+            // Fill light from opposite side
+            const fillLight = new THREE.DirectionalLight(0x8888ff, 0.3);
+            fillLight.position.set(-5, 5, -5);
+            scene.add(fillLight);
+
+            // Rim light for depth
+            const rimLight = new THREE.DirectionalLight(0xffffff, 0.2);
+            rimLight.position.set(0, 0, -10);
+            scene.add(rimLight);
+
+            // Enhanced ground with reflection
+            const groundGeometry = new THREE.PlaneGeometry(6, 6);
+            const groundMaterial = new THREE.MeshStandardMaterial({ color: currentTheme === 'dark' ? 0x1a1a25 : 0xe2e8f0, roughness: 0.9 });
+            const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+            ground.rotation.x = -Math.PI / 2;
+            ground.receiveShadow = true;
+            ground.name = 'ground';
+            scene.add(ground);
+            const gridHelper = new THREE.GridHelper(4, 20, 0x6366f1, 0x333355);
+            gridHelper.position.y = 0.002;
+            scene.add(gridHelper);
+            createBall('physics', BALL_COLORS.physics, BALL_POSITIONS.physics);
+            createBall('sensor', BALL_COLORS.sensor, BALL_POSITIONS.sensor);
+            createBall('lstm', BALL_COLORS.lstm, BALL_POSITIONS.lstm);
+            let isDragging = false;
+            let prevMouse = { x: 0, y: 0 };
+            let camAngle = { theta: Math.PI / 4, phi: Math.PI / 5 };
+            // camRadius is now global for zoom buttons
+            window.updateCam = function() {
+                camera.position.x = camRadius * Math.sin(camAngle.theta) * Math.cos(camAngle.phi);
+                camera.position.y = camRadius * Math.sin(camAngle.phi) + 0.4;
+                camera.position.z = camRadius * Math.cos(camAngle.theta) * Math.cos(camAngle.phi);
+                camera.lookAt(0, 0.4, 0);
+            }
+            const updateCam = window.updateCam;
+            canvas.addEventListener('mousedown', e => { isDragging = true; prevMouse = { x: e.clientX, y: e.clientY }; });
+            canvas.addEventListener('mousemove', e => {
+                if (!isDragging) return;
+                camAngle.theta -= (e.clientX - prevMouse.x) * 0.01;
+                camAngle.phi = Math.max(0.1, Math.min(Math.PI/2 - 0.1, camAngle.phi + (e.clientY - prevMouse.y) * 0.01));
+                updateCam();
+                prevMouse = { x: e.clientX, y: e.clientY };
+            });
+            canvas.addEventListener('mouseup', () => isDragging = false);
+            canvas.addEventListener('mouseleave', () => isDragging = false);
+            canvas.addEventListener('wheel', e => { e.preventDefault(); camRadius = Math.max(1.5, Math.min(8, camRadius + e.deltaY * 0.003)); updateCam(); });
+
+            // Touch controls for mobile
+            let touchStartPos = { x: 0, y: 0 };
+            let lastTouchDist = 0;
+
+            canvas.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                if (e.touches.length === 1) {
+                    touchStartPos = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+                } else if (e.touches.length === 2) {
+                    lastTouchDist = Math.hypot(
+                        e.touches[0].clientX - e.touches[1].clientX,
+                        e.touches[0].clientY - e.touches[1].clientY
+                    );
+                }
+            }, { passive: false });
+
+            canvas.addEventListener('touchmove', (e) => {
+                e.preventDefault();
+                if (e.touches.length === 1) {
+                    const dx = e.touches[0].clientX - touchStartPos.x;
+                    const dy = e.touches[0].clientY - touchStartPos.y;
+
+                    camAngle.theta -= dx * 0.01;
+                    camAngle.phi = Math.max(0.1, Math.min(Math.PI/2 - 0.1, camAngle.phi + dy * 0.01));
+                    updateCam();
+
+                    touchStartPos = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+                } else if (e.touches.length === 2) {
+                    // Pinch to zoom
+                    const dist = Math.hypot(
+                        e.touches[0].clientX - e.touches[1].clientX,
+                        e.touches[0].clientY - e.touches[1].clientY
+                    );
+                    const delta = lastTouchDist - dist;
+                    camRadius = Math.max(1.5, Math.min(8, camRadius + delta * 0.01));
+                    updateCam();
+                    lastTouchDist = dist;
+                }
+            }, { passive: false });
+
+            window.addEventListener('resize', () => {
+                camera.aspect = container.clientWidth / container.clientHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(container.clientWidth, container.clientHeight);
+            });
+            animate();
+        }
+
+        // Ball-type specific PBR material properties
+        function getBallMaterial(name, color) {
+            const materials = {
+                physics: {
+                    metalness: 0.8,
+                    roughness: 0.15,
+                    emissiveIntensity: 0.2
+                },
+                sensor: {
+                    metalness: 0.3,
+                    roughness: 0.6,
+                    emissiveIntensity: 0.15
+                },
+                lstm: {
+                    metalness: 0.5,
+                    roughness: 0.3,
+                    emissiveIntensity: 0.25
+                }
+            };
+
+            const props = materials[name] || materials.physics;
+
+            return new THREE.MeshStandardMaterial({
+                color,
+                metalness: props.metalness,
+                roughness: props.roughness,
+                emissive: color,
+                emissiveIntensity: props.emissiveIntensity
+            });
+        }
+
+        function createBall(name, color, xPos) {
+            // Container Pattern for stable scaling
+            const ballGroup = new THREE.Group();
+            ballGroup.position.set(xPos, 0.67, 0);
+            ballGroup.name = name;
+            scene.add(ballGroup);
+            balls[name] = ballGroup;
+
+            // Main ball mesh (child)
+            // Base radius 1.0, scaled dynamically
+            const geometry = new THREE.SphereGeometry(1.0, 64, 64);
+            const material = getBallMaterial(name, color);
+            const ballMesh = new THREE.Mesh(geometry, material);
+            // Initial visual scale 0.04 (will be overwritten by update3DScene)
+            ballMesh.scale.set(0.04, 0.04, 0.04);
+            ballMesh.castShadow = true;
+            ballGroup.add(ballMesh);
+
+            // Store mesh reference for easy access
+            ballGroup.userData.mesh = ballMesh;
+
+            // Glow effect using sprite (attach to group)
+            const glowCanvas = document.createElement('canvas');
+            glowCanvas.width = 64;
+            glowCanvas.height = 64;
+            const glowCtx = glowCanvas.getContext('2d');
+            const gradient = glowCtx.createRadialGradient(32, 32, 0, 32, 32, 32);
+            const colorHex = '#' + color.toString(16).padStart(6, '0');
+            gradient.addColorStop(0, colorHex + 'aa');
+            gradient.addColorStop(0.4, colorHex + '44');
+            gradient.addColorStop(1, colorHex + '00');
+            glowCtx.fillStyle = gradient;
+            glowCtx.fillRect(0, 0, 64, 64);
+            const glowTexture = new THREE.CanvasTexture(glowCanvas);
+            const glowMaterial = new THREE.SpriteMaterial({
+                map: glowTexture,
+                transparent: true,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false
+            });
+            const glow = new THREE.Sprite(glowMaterial);
+            glow.scale.set(0.15, 0.15, 1);
+            ballGroup.add(glow);
+            ballGlows[name] = glow;
+        }
+        function updateSceneTheme() {
+            if (!scene) return;
+            scene.background = new THREE.Color(currentTheme === 'dark' ? 0x0a0a0f : 0xf8fafc);
+            const ground = scene.getObjectByName('ground');
+            if (ground) ground.material.color.setHex(currentTheme === 'dark' ? 0x1a1a25 : 0xe2e8f0);
+        }
+
+        function createTrailParticle(name, x, y, z) {
+            const color = BALL_COLORS[name];
+            const geometry = new THREE.SphereGeometry(0.008, 8, 8);
+            const material = new THREE.MeshBasicMaterial({
+                color,
+                transparent: true,
+                opacity: 0.6
+            });
+            const particle = new THREE.Mesh(geometry, material);
+            particle.position.set(x, y, z);
+            particle.userData.life = 1.0;
+            scene.add(particle);
+            trailParticles[name].push(particle);
+
+            // Limit trail length
+            while (trailParticles[name].length > MAX_TRAIL_POINTS) {
+                const old = trailParticles[name].shift();
+                scene.remove(old);
+                old.geometry.dispose();
+                old.material.dispose();
+            }
+        }
+
+        function updateTrails() {
+            ['physics', 'sensor', 'lstm'].forEach(name => {
+                const enabled = document.getElementById(`enable-${name}`).checked;
+                trailParticles[name].forEach((particle, index) => {
+                    particle.userData.life -= 0.02;
+                    particle.material.opacity = particle.userData.life * 0.6;
+                    particle.scale.setScalar(particle.userData.life);
+                    particle.visible = enabled && particle.userData.life > 0;
+                });
+                // Remove dead particles
+                trailParticles[name] = trailParticles[name].filter(p => {
+                    if (p.userData.life <= 0) {
+                        scene.remove(p);
+                        p.geometry.dispose();
+                        p.material.dispose();
+                        return false;
+                    }
+                    return true;
+                });
+            });
+        }
+
+        function clearTrails() {
+            ['physics', 'sensor', 'lstm'].forEach(name => {
+                trailParticles[name].forEach(p => {
+                    scene.remove(p);
+                    p.geometry.dispose();
+                    p.material.dispose();
+                });
+                trailParticles[name] = [];
+            });
+        }
+
+        // Impact particle system for bounce effects
+        let impactParticles = [];
+        const MAX_IMPACT_PARTICLES = 50;
+
+        function createImpactBurst(x, y, z, color) {
+            const particleCount = 12;
+
+            for (let i = 0; i < particleCount && impactParticles.length < MAX_IMPACT_PARTICLES; i++) {
+                const angle = (i / particleCount) * Math.PI * 2;
+                const speed = 0.5 + Math.random() * 0.5;
+
+                const geometry = new THREE.SphereGeometry(0.006, 8, 8);
+                const material = new THREE.MeshBasicMaterial({
+                    color,
+                    transparent: true,
+                    opacity: 0.8
+                });
+                const particle = new THREE.Mesh(geometry, material);
+
+                particle.position.set(x, y + 0.01, z);
+                particle.userData = {
+                    velocity: new THREE.Vector3(
+                        Math.cos(angle) * speed * 0.3,
+                        Math.random() * speed * 0.5,
+                        Math.sin(angle) * speed * 0.3
+                    ),
+                    life: 1.0,
+                    gravity: 2.0
+                };
+
+                scene.add(particle);
+                impactParticles.push(particle);
+            }
+        }
+
+        function updateImpactParticles(deltaTime) {
+            impactParticles = impactParticles.filter(p => {
+                p.userData.life -= deltaTime * 2;
+                p.userData.velocity.y -= p.userData.gravity * deltaTime;
+
+                p.position.add(p.userData.velocity.clone().multiplyScalar(deltaTime));
+                p.material.opacity = p.userData.life * 0.8;
+                p.scale.setScalar(Math.max(0.1, p.userData.life));
+
+                if (p.userData.life <= 0) {
+                    scene.remove(p);
+                    p.geometry.dispose();
+                    p.material.dispose();
+                    return false;
+                }
+                return true;
+            });
+        }
+
+        function clearImpactParticles() {
+            impactParticles.forEach(p => {
+                scene.remove(p);
+                p.geometry.dispose();
+                p.material.dispose();
+            });
+            impactParticles = [];
+        }
+
+        function animate(timestamp) {
+            requestAnimationFrame(animate);
+
+            if (!lastFrameTime) lastFrameTime = timestamp;
+            // Clamp deltaTime to prevent huge jumps (max 0.1s)
+            const rawDelta = (timestamp - lastFrameTime) / 1000;
+            const deltaTime = Math.min(rawDelta, 0.1);
+            lastFrameTime = timestamp;
+
+            // Update trails
+            updateTrails();
+
+            // Update impact particles
+            updateImpactParticles(deltaTime);
+
+            if (isAnimating && trajectoryData) {
+                let maxLength = 0;
+                let maxDuration = 0;
+                ['physics', 'sensor', 'lstm'].forEach(key => {
+                    if (trajectoryData[key] && trajectoryData[key].y && document.getElementById(`enable-${key}`).checked) {
+                        maxLength = Math.max(maxLength, trajectoryData[key].y.length);
+                        if (trajectoryData[key].time && trajectoryData[key].time.length > 0) {
+                            maxDuration = Math.max(maxDuration, trajectoryData[key].time[trajectoryData[key].time.length - 1]);
+                        }
+                    }
+                });
+
+                // Advance simulation time
+                // Speed factor: animationSpeed (e.g. 1x, 4x)
+                // We need to map time to array indices
+                // Assume data is uniform. Calculate dt from data if possible.
+                // Fallback to 0.002 if undetermined.
+                let dt = 0.002;
+                if (maxDuration > 0 && maxLength > 1) {
+                    dt = maxDuration / (maxLength - 1);
+                }
+
+                // Scale deltaTime by 0.5 for "cinematic" real-time feel on small screens
+                // True 1.0 real-time often feels too fast in simulations
+                const timeScale = 0.5;
+                if (!isPaused) {
+                    simulationTime += deltaTime * animationSpeed * timeScale;
+                }
+
+                // Update timeline display
+                updateTimelineDisplay();
+
+                ['physics', 'sensor', 'lstm'].forEach(key => {
+                    const enabled = document.getElementById(`enable-${key}`).checked;
+                    if (trajectoryData[key] && trajectoryData[key].y && balls[key]) {
+                        const data = trajectoryData[key];
+                        // Get indices for interpolation based on actual data density
+                        // If this specific dataset has different time array, strictly we should search it
+                        // But usually they align. Let's use the global calculated dt for sync.
+
+                        const exactIndex = simulationTime / dt;
+                        const idx1 = Math.floor(exactIndex);
+                        const idx2 = Math.min(idx1 + 1, data.y.length - 1);
+                        const t = exactIndex - idx1; // fractional part for lerp
+
+                        if (idx1 < data.y.length) {
+                            // Interpolate position
+                            const x1 = data.x ? data.x[idx1] : BALL_POSITIONS[key];
+                            const x2 = data.x && idx2 < data.x.length ? data.x[idx2] : x1;
+                            const x = x1 * (1 - t) + x2 * t;
+
+                            const y1 = data.y[idx1];
+                            const y2 = data.y[idx2];
+                            const y = y1 * (1 - t) + y2 * t;
+
+                            const z1 = data.z ? data.z[idx1] : 0;
+                            const z2 = data.z && idx2 < data.z.length ? data.z[idx2] : z1;
+                            const z = z1 * (1 - t) + z2 * t;
+
+                            // Update Group position (translation only)
+                            balls[key].position.set(x, y, z);
+
+                            // Bounce detection for impact particles
+                            const r = balls[key].userData.baseRadius || 0.04;
+                            const vy = (y2 - y1) / dt;
+                            const isDescending = vy < -0.3;
+                            const isNearGround = y < r * 2.5;
+
+                            // Detect bounce: was going down fast near ground, now going up or slowed
+                            if (wasDescending[key] && isNearGround && vy > -0.1 && enabled) {
+                                createImpactBurst(x, r, z, BALL_COLORS[key]);
+                            }
+                            wasDescending[key] = isDescending;
+                            prevYPositions[key] = y;
+
+                            // Create trail particle every few frames (approx every 0.05s sim time)
+                            if (enabled && Math.floor(simulationTime / 0.05) > Math.floor((simulationTime - deltaTime * animationSpeed) / 0.05)) {
+                                createTrailParticle(key, x, y, z);
+                            }
+
+                            // Improved squash logic applied to Child Mesh
+                            // Only squash if very close to ground AND moving down fast
+                            // (r and vy already defined above for bounce detection)
+                            const mesh = balls[key].userData.mesh;
+
+                            if (mesh) {
+                                // Only squash if very close to ground AND moving down fast AND significantly above rest
+                                // This prevents squashing when settling on the ground due to sensor noise
+                                if (y < r * 1.5 && vy < -0.5 && y > r * 0.8 && !data.isRigid) {
+                                    // Squash factor based on velocity
+                                    const squash = Math.max(0.6, 1.0 - Math.abs(vy) * 0.1);
+                                    // Pure calculation from base radius 'r' with visual scale
+                                    const sr = r * ballVisualScale;
+                                    mesh.scale.set(sr * (1/squash), sr * squash, sr * (1/squash));
+                                } else {
+                                    // Instantly reset to base radius with visual scale
+                                    const sr = r * ballVisualScale;
+                                    mesh.scale.set(sr, sr, sr);
+                                }
+                            }
+                        } else {
+                            // End of data
+                            // balls[key].scale.set(1, 1, 1);
+                        }
+                        balls[key].visible = enabled;
+                    } else if (balls[key]) {
+                        balls[key].visible = false;
+                    }
+                    if (trajectoryLines[key]) trajectoryLines[key].visible = enabled && trajectoryData[key];
+                });
+
+                // Loop
+                if (simulationTime > maxDuration + 0.5) { // +0.5s pause based on time
+                    simulationTime = 0;
+                    clearTrails();
+                    clearImpactParticles();
+                    // Reset bounce detection state
+                    ['physics', 'sensor', 'lstm'].forEach(k => {
+                        wasDescending[k] = false;
+                        prevYPositions[k] = 0;
+                    });
+                }
+            }
+            renderer.render(scene, camera);
+        }
+
+        let simulationTime = 0;
+        let lastFrameTime = 0;
+        let isPaused = false;
+
+        function togglePlayPause() {
+            isPaused = !isPaused;
+            document.getElementById('play-icon').innerHTML = isPaused ? '&#9654;' : '&#10074;&#10074;';
+        }
+
+        function restartAnimation() {
+            simulationTime = 0;
+            clearTrails();
+            clearImpactParticles();
+            ['physics', 'sensor', 'lstm'].forEach(k => {
+                wasDescending[k] = false;
+                prevYPositions[k] = 0;
+            });
+            isPaused = false;
+            document.getElementById('play-icon').innerHTML = '&#10074;&#10074;';
+        }
+
+        function scrubTimeline(value) {
+            if (!trajectoryData) return;
+
+            let maxDuration = 0;
+            ['physics', 'sensor', 'lstm'].forEach(key => {
+                if (trajectoryData[key] && trajectoryData[key].time) {
+                    maxDuration = Math.max(maxDuration,
+                        trajectoryData[key].time[trajectoryData[key].time.length - 1]);
+                }
+            });
+
+            simulationTime = (value / 100) * maxDuration;
+            isPaused = true;
+            document.getElementById('play-icon').innerHTML = '&#9654;';
+        }
+
+        function updateTimelineDisplay() {
+            if (!trajectoryData) return;
+
+            let maxDuration = 0;
+            ['physics', 'sensor', 'lstm'].forEach(key => {
+                if (trajectoryData[key] && trajectoryData[key].time) {
+                    maxDuration = Math.max(maxDuration,
+                        trajectoryData[key].time[trajectoryData[key].time.length - 1]);
+                }
+            });
+
+            const progress = maxDuration > 0 ? (simulationTime / maxDuration) * 100 : 0;
+            document.getElementById('timeline-slider').value = Math.min(100, progress);
+            document.getElementById('current-time').textContent = simulationTime.toFixed(2) + 's';
+        }
+
+        function showToast(message, type = 'error') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.textContent = message;
+            container.appendChild(toast);
+
+            setTimeout(() => toast.remove(), 3000);
+        }
+
+        function update3DScene(data) {
+            trajectoryData = data;
+
+            // Reset simulation time accumulator
+            simulationTime = 0;
+            lastFrameTime = performance.now();
+
+            isAnimating = false;
+
+            // Clear previous trails and impact particles
+            clearTrails();
+            clearImpactParticles();
+            // Reset bounce detection state
+            ['physics', 'sensor', 'lstm'].forEach(k => {
+                wasDescending[k] = false;
+                prevYPositions[k] = 0;
+            });
+
+            const initialHeight = parseFloat(document.getElementById('height-slider').value) / 100;
+            Object.values(trajectoryLines).forEach(line => { if (line) scene.remove(line); });
+            trajectoryLines = { physics: null, sensor: null, lstm: null };
+            Object.keys(balls).forEach(key => {
+                if (balls[key]) {
+                    // balls[key] is now the Group
+                    balls[key].position.set(BALL_POSITIONS[key], initialHeight, 0);
+
+                    // Store base radius for reliable squash/stretch calculations
+                    let r = 0.04;
+                    if (data[key] && data[key].ballRadius) r = data[key].ballRadius;
+                    balls[key].userData.baseRadius = r;
+
+                    // Apply scale to the CHILD MESH only
+                    const mesh = balls[key].userData.mesh;
+                    if (mesh) {
+                        const scaledR = r * ballVisualScale;
+                        mesh.scale.set(scaledR, scaledR, scaledR);
+                    }
+
+                    // Scale the glow relative to the ball radius
+                    // Original ratio: 0.15 glow for 0.04 ball ~= 3.75x
+                    if (ballGlows[key]) {
+                        const glowSize = r * ballVisualScale * 4.0;
+                        ballGlows[key].scale.set(glowSize, glowSize, 1);
+                    }
+
+                    balls[key].visible = document.getElementById(`enable-${key}`).checked && data[key];
+                }
+            });
+            ['physics', 'sensor', 'lstm'].forEach(key => {
+                if (data[key] && data[key].y && data[key].y.length > 0) {
+                    const points = [];
+                    const d = data[key];
+                    for (let i = 0; i < d.y.length; i += 3) {
+                        points.push(new THREE.Vector3(d.x ? d.x[i] : BALL_POSITIONS[key], d.y[i], d.z ? d.z[i] : 0));
+                    }
+                    if (points.length > 1) {
+                        const lineGeom = new THREE.BufferGeometry().setFromPoints(points);
+                        const lineMat = new THREE.LineBasicMaterial({
+                            color: BALL_COLORS[key],
+                            transparent: true,
+                            opacity: 0.35,
+                            linewidth: 2
+                        });
+                        trajectoryLines[key] = new THREE.Line(lineGeom, lineMat);
+                        trajectoryLines[key].visible = document.getElementById(`enable-${key}`).checked;
+                        scene.add(trajectoryLines[key]);
+                    }
+                    // Update Group position
+                    if (balls[key]) balls[key].position.set(d.x ? d.x[0] : BALL_POSITIONS[key], d.y[0], 0);
+                }
+            });
+            setTimeout(() => { animationIndex = 0; isAnimating = true; }, 100);
+        }
+        let chart2D = null;
+        let chartComparison = null;
+        function initCharts() {
+            const baseConfig = {
+                type: 'line',
+                data: { datasets: [] },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: { duration: 0 },
+                    interaction: { intersect: false, mode: 'index' },
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { type: 'linear', title: { display: true, text: 'Time (s)', color: '#a0a0b0' }, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#606070' } },
+                        y: { title: { display: true, text: 'Height (m)', color: '#a0a0b0' }, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#606070' }, min: 0 }
+                    }
+                }
+            };
+            chart2D = new Chart(document.getElementById('chart-2d').getContext('2d'), JSON.parse(JSON.stringify(baseConfig)));
+            chartComparison = new Chart(document.getElementById('chart-comparison').getContext('2d'), JSON.parse(JSON.stringify(baseConfig)));
+        }
+        function updateChartTheme() {
+            const color = currentTheme === 'dark' ? '#a0a0b0' : '#475569';
+            const grid = currentTheme === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)';
+            [chart2D, chartComparison].forEach(chart => {
+                if (!chart) return;
+                chart.options.scales.x.title.color = color;
+                chart.options.scales.y.title.color = color;
+                chart.options.scales.x.grid.color = grid;
+                chart.options.scales.y.grid.color = grid;
+                chart.update('none');
+            });
+        }
+        function update2DCharts(data) {
+            const datasets = [];
+            const configs = {
+                physics: { color: '#3b82f6', label: translations[currentLang].physics_model },
+                sensor: { color: '#10b981', label: translations[currentLang].sensor_data },
+                lstm: { color: '#f43f5e', label: translations[currentLang].lstm_prediction }
+            };
+            Object.keys(configs).forEach(key => {
+                if (data[key] && data[key].time && data[key].y && document.getElementById(`enable-${key}`).checked) {
+                    const points = data[key].time.map((t, i) => ({ x: t, y: data[key].y[i] }));
+                    datasets.push({
+                        label: configs[key].label,
+                        data: points,
+                        borderColor: configs[key].color,
+                        backgroundColor: configs[key].color + '20',
+                        borderWidth: 2,
+                        pointRadius: 0,
+                        tension: 0.3,
+                        fill: true
+                    });
+                }
+            });
+            if (chart2D) {
+                chart2D.data.datasets = datasets;
+                chart2D.update('none');
+            }
+            if (chartComparison) {
+                chartComparison.data.datasets = datasets;
+                chartComparison.update('none');
+            }
+        }
+        function switchView(view) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+            event.target.classList.add('active');
+            document.getElementById(`view-${view}`).classList.add('active');
+        }
+        async function runSimulation() {
+            const btn = document.getElementById('simulate-btn');
+            const loading = document.getElementById('loading');
+            btn.disabled = true;
+            loading.classList.add('active');
+            const params = {
+                dropHeight: parseFloat(document.getElementById('height-slider').value),
+                ballType: document.getElementById('ball-select').value,
+                mass: parseFloat(document.getElementById('mass-slider').value) / 1000.0, // convert g to kg
+                enablePhysics: document.getElementById('enable-physics').checked,
+                enableSensor: document.getElementById('enable-sensor').checked,
+                enableLstm: document.getElementById('enable-lstm').checked,
+                gravity: parseFloat(document.getElementById('gravity-slider').value),
+                restitution: parseFloat(document.getElementById('restitution-slider').value),
+                initialVelocity: parseFloat(document.getElementById('velocity-slider').value),
+                dragEnabled: dragEnabled,
+                lstmBlend: parseFloat(document.getElementById('lstm-blend-slider').value),
+                sensorDataFile: document.getElementById('dataset-select').value
+            };
+            try {
+                const response = await fetch('/api/simulate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(params)
+                });
+                if (!response.ok) throw new Error(`Server error: ${response.status}`);
+                const data = await response.json();
+                if (data.error) throw new Error(data.error);
+                update3DScene(data);
+                update2DCharts(data);
+                updateStats(data);
+            } catch (error) {
+                console.error('Simulation error:', error);
+                showToast('Simulation error: ' + error.message, 'error');
+            } finally {
+                btn.disabled = false;
+                loading.classList.remove('active');
+            }
+        }
+        function updateStats(data) {
+            const calcStats = (arr, times, radius) => {
+                if (!arr || !times || arr.length === 0 || times.length === 0) {
+                    return { time: '--', bounces: '--' };
+                }
+                let firstGround = times[times.length - 1];
+                let bounces = 0;
+
+                // Hysteresis state machine
+                // radius = center height when on ground
+                // lowThreshold: slightly above rest position. Entering this means "impact".
+                // highThreshold: significantly above rest position. Exiting this means "airborne".
+                const r = radius || 0.04;
+                const lowThreshold = r + 0.005;
+                const highThreshold = r + 0.02;
+
+                let isAirborne = true; // Assume we start in air (drop height > 2cm typically)
+
+                for (let i = 0; i < arr.length; i++) {
+                    if (isAirborne) {
+                        if (arr[i] <= lowThreshold) {
+                            // Transition AIR -> GROUND (Impact)
+                            if (bounces === 0) firstGround = times[i];
+                            bounces++;
+                            isAirborne = false;
+                        }
+                    } else {
+                        if (arr[i] > highThreshold) {
+                            // Transition GROUND -> AIR (Bounce up)
+                            isAirborne = true;
+                        }
+                    }
+                }
+
+                // Bounces count impacts. If it just drops and stops, that's 1 impact -> 0 bounces "back up"
+                // Or user wants number of impacts? Standard is "bounces" usually implies re-bounds.
+                // Let's stick to max(0, impacts - 1)
+                return { time: firstGround.toFixed(3) + 's', bounces: Math.max(0, bounces - 1).toString() };
+            };
+
+            // Reset all stats first
+            document.getElementById('stat-physics-time').textContent = '--';
+            document.getElementById('stat-physics-bounces').textContent = '--';
+            document.getElementById('stat-sensor-time').textContent = '--';
+            document.getElementById('stat-sensor-bounces').textContent = '--';
+            document.getElementById('stat-lstm-time').textContent = '--';
+            document.getElementById('stat-lstm-bounces').textContent = '--';
+
+            // Get radii from data and update stats for available models
+            if (data.physics && data.physics.y && data.physics.time) {
+                const physRadius = data.physics.ballRadius || 0.012;
+                const s = calcStats(data.physics.y, data.physics.time, physRadius);
+                document.getElementById('stat-physics-time').textContent = s.time;
+                document.getElementById('stat-physics-bounces').textContent = s.bounces;
+            }
+            if (data.sensor && data.sensor.y && data.sensor.time) {
+                const sensorRadius = data.sensor.ballRadius || 0.03;
+                const s = calcStats(data.sensor.y, data.sensor.time, sensorRadius);
+                document.getElementById('stat-sensor-time').textContent = s.time;
+                document.getElementById('stat-sensor-bounces').textContent = s.bounces;
+            }
+            if (data.lstm && data.lstm.y && data.lstm.time) {
+                const lstmRadius = data.lstm.ballRadius || 0.012;
+                const s = calcStats(data.lstm.y, data.lstm.time, lstmRadius);
+                document.getElementById('stat-lstm-time').textContent = s.time;
+                document.getElementById('stat-lstm-bounces').textContent = s.bounces;
+            }
+        }
+        let ballTypes = {};
+
+        async function loadBallTypes() {
+            try {
+                const response = await fetch('/api/ball-types');
+                ballTypes = await response.json();
+
+                // Dynamically populate select
+                const select = document.getElementById('ball-select');
+                select.innerHTML = '';
+
+                Object.keys(ballTypes).forEach(key => {
+                    const opt = document.createElement('option');
+                    opt.value = key;
+                    opt.textContent = ballTypes[key].name;
+                    select.appendChild(opt);
+                });
+
+                // Set rubber as default if available, otherwise first option
+                if (ballTypes['rubber']) {
+                    select.value = 'rubber';
+                } else if (Object.keys(ballTypes).length > 0) {
+                    select.value = Object.keys(ballTypes)[0];
+                }
+
+                // Initialize settings based on current selection
+                updateBallSettings();
+
+            } catch (error) {
+                console.error('Error loading ball types:', error);
+            }
+        }
+
+        function updateBallSettings() {
+            const select = document.getElementById('ball-select');
+            const type = select.value;
+            const ball = ballTypes[type];
+
+            if (ball) {
+                // Update restitution
+                if (ball.restitution !== undefined) {
+                    document.getElementById('restitution-slider').value = ball.restitution;
+                    updateSlider('restitution');
+                }
+                // Update mass
+                if (ball.mass !== undefined) {
+                    document.getElementById('mass-slider').value = ball.mass; // mass is already in grams from API
+                    updateSlider('mass');
+                }
+
+                // Handle dataset association
+                const sensorCheck = document.getElementById('enable-sensor');
+                const datasetSelect = document.getElementById('dataset-select');
+
+                // Check if associated dataset exists
+                if (ball.associatedDataset) {
+                    // Start with assuming it's valid
+                    validateSensorConstraints();
+                } else {
+                    // No dataset for this ball type
+                    sensorCheck.checked = false;
+                    sensorCheck.disabled = true;
+                    datasetSelect.disabled = true;
+                    sensorCheck.dispatchEvent(new Event('change'));
+                }
+            }
+        }
+
+        function validateSensorConstraints() {
+            const select = document.getElementById('ball-select');
+            const ball = ballTypes[select.value];
+            if (!ball || !ball.associatedDataset) return;
+
+            const sensorCheck = document.getElementById('enable-sensor');
+            const datasetSelect = document.getElementById('dataset-select');
+
+            // Reference values for validity
+            // Mass: 59g (0.0592 kg) -> Allow 58-60
+            // Height: 67cm -> Allow 66-68
+            const currentMass = parseFloat(document.getElementById('mass-slider').value);
+            const currentHeight = parseFloat(document.getElementById('height-slider').value);
+
+            const isMassValid = currentMass >= 58 && currentMass <= 60;
+            const isHeightValid = currentHeight >= 66 && currentHeight <= 68;
+
+            if (isMassValid && isHeightValid) {
+                // Enable controls
+                if (sensorCheck.disabled) {
+                    sensorCheck.disabled = false;
+                    sensorCheck.checked = true; // Auto-check when becoming valid? Or just enable. Let's auto-check for better UX.
+                }
+                datasetSelect.value = ball.associatedDataset;
+                datasetSelect.disabled = false; // Allow changing dataset if multiple were available (though currently locked to 1)
+                // Actually user wanted "dataset select doesn't work", so we should enable it if valid.
+            } else {
+                // Disable controls
+                sensorCheck.checked = false;
+                sensorCheck.disabled = true;
+                datasetSelect.disabled = true;
+            }
+            sensorCheck.dispatchEvent(new Event('change'));
+        }
+
+        async function loadDatasets() {
+            try {
+                const response = await fetch('/api/datasets');
+                const datasets = await response.json();
+                const select = document.getElementById('dataset-select');
+                select.innerHTML = '';
+                Object.keys(datasets).forEach(key => {
+                    const opt = document.createElement('option');
+                    opt.value = key;
+                    const info = datasets[key];
+                    opt.textContent = `${key} (${info.point_count} pts, ${info.duration.toFixed(2)}s)`;
+                    select.appendChild(opt);
+                });
+            } catch (error) {
+                console.log('Using default datasets');
+            }
+        }
+        document.addEventListener('DOMContentLoaded', () => {
+            init3D();
+            initCharts();
+            loadDatasets();
+            loadBallTypes().then(() => {
+                // Auto-run simulation after ball types are loaded for immediate demo
+                setTimeout(() => runSimulation(), 500);
+            });
+
+            // Add listener for ball type change
+            document.getElementById('ball-select').addEventListener('change', updateBallSettings);
+
+            // Apply default language (French)
+            setLanguage('fr');
+
+            updateSlider('mass');
+            updateSlider('height');
+            updateSlider('gravity');
+            updateSlider('restitution');
+            updateSlider('velocity');
+            updateSlider('lstm-blend');
+            ['physics', 'sensor', 'lstm'].forEach(key => {
+                const el = document.getElementById(`enable-${key}`);
+                el.addEventListener('change', () => {
+                    const checked = el.checked;
+                    // Visual update for disabled/enabled state
+                    if (balls[key]) balls[key].visible = checked;
+                    if (trajectoryLines[key]) trajectoryLines[key].visible = checked;
+                    if (chart2D && trajectoryData) update2DCharts(trajectoryData);
+                });
+            });
+        });
+    </script>
+    <div class="toast-container" id="toast-container"></div>
+</body>
+</html>
