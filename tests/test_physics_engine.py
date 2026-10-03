@@ -192,3 +192,8 @@ def test_horizontal_velocity_is_damped_at_each_bounce():
     x = np.array(r["x"])
     assert x[-1] > 0.2
     assert np.all(np.diff(x) >= -1e-12)
+
+
+def test_non_positive_timestep_is_rejected():
+    with pytest.raises(ValueError):
+        simulate_trajectory_3d(BALL_PRESETS["steel"], 1.0, dt=0.0)

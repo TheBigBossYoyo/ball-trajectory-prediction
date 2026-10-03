@@ -184,6 +184,8 @@ def simulate_trajectory_3d(
     max_time = max_time if max_time is not None else config.MAX_SIMULATION_TIME
     restitution = restitution if restitution is not None else ball.restitution
     gravity = gravity if gravity is not None else config.GRAVITY
+    if dt <= 0:
+        raise ValueError("dt must be positive")
 
     positions = []
     times = []
