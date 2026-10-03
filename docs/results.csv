@@ -1,0 +1,10 @@
+dataset,model,n_scored,rmse_m,mae_m,fall_to_20cm_err_s,apex1_time_err_s,apex1_height_err_m
+data.csv,physics,183,0.04208,0.03597,-0.00877,-0.03,0.04443
+data.csv,lstm,183,0.23423,0.20403,-0.00474,-0.04,-0.36808
+data.csv,constant,183,0.12826,0.10493,,-0.27,-0.2418
+data2.csv,physics,51,0.17637,0.13139,0.00184,-0.11,0.10893
+data2.csv,lstm,51,0.20153,0.14943,0.00196,-0.2,-0.24471
+data2.csv,constant,51,0.11589,0.09987,,-0.37,-0.14401
+data3.csv,physics,108,0.16177,0.12714,0.00128,-0.11,0.09153
+data3.csv,lstm,108,0.16619,0.13182,-0.00193,-0.17,-0.22027
+data3.csv,constant,108,0.11352,0.09972,,-0.38,-0.19646

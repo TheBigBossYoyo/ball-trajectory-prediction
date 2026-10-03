@@ -1,0 +1,10 @@
+fitted_on,restitution,decay,evaluated_on,rmse_m,mae_m
+data.csv,0.87,0.98,data.csv,0.04208,0.03597
+data.csv,0.87,0.98,data2.csv,0.17637,0.13139
+data.csv,0.87,0.98,data3.csv,0.16177,0.12714
+data2.csv,0.74,1.0,data.csv,0.12632,0.10325
+data2.csv,0.74,1.0,data2.csv,0.13587,0.10404
+data2.csv,0.74,1.0,data3.csv,0.12221,0.09463
+data3.csv,0.75,0.98,data.csv,0.12429,0.10195
+data3.csv,0.75,0.98,data2.csv,0.13612,0.1037
+data3.csv,0.75,0.98,data3.csv,0.12122,0.09541
