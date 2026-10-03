@@ -25,7 +25,7 @@ from schemas import SimulationRequest, SimulationResponse, TrajectoryData, Error
 from physics import Ball, BALL_PRESETS, simulate_trajectory_3d
 from data_processing import process_sensor_csv, extend_trajectory_with_physics
 from synthetic import generate_training_data, set_seed
-from model import TrajectoryPredictor
+from model import TrajectoryPredictor, TF_AVAILABLE
 
 # Configure logging
 logging.basicConfig(
@@ -187,7 +187,12 @@ def initialize_app():
         except Exception as e:
             logger.warning(f"  Could not load model: {e}")
 
-    if not model_loaded:
+    if not TF_AVAILABLE:
+        logger.warning(
+            "  TensorFlow is not installed (use Python 3.12 and requirements.txt). "
+            "The LSTM ball will be a physics-based stand-in labelled 'lstm (fallback)'."
+        )
+    elif not model_loaded:
         logger.info("[3/3] Training new model...")
         try:
             # Get list of existing data files for augmentation

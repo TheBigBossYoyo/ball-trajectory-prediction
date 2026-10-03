@@ -1,5 +1,6 @@
-# Tested with Python 3.12. TensorFlow has no wheels for Python 3.14 yet,
-# so on 3.14 everything except the LSTM still works (see README).
+# Tested with Python 3.12. TensorFlow has no stable release for Python 3.14
+# yet (only a 2.22 release candidate), so on 3.14 everything except the LSTM
+# still works (see README).
 
 # Web framework
 flask>=3.0,<4
@@ -16,5 +17,5 @@ matplotlib>=3.8,<4
 # Validation
 pydantic>=2.0,<3
 
-# LSTM (needs Python 3.9-3.12; skipped automatically on newer versions)
-tensorflow>=2.16,<2.22; python_version < "3.13"
+# LSTM (TensorFlow 2.21 has wheels up to Python 3.13; skipped on 3.14+)
+tensorflow>=2.16,<2.22; python_version < "3.14"

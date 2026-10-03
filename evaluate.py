@@ -140,7 +140,7 @@ def lstm_curves(datasets, epochs):
     """
     from model import TF_AVAILABLE, TrajectoryPredictor
     if not TF_AVAILABLE:
-        return None, ("TensorFlow is not installed (it needs Python 3.9 to 3.12). "
+        return None, ("TensorFlow is not installed (there is no stable release for Python 3.14 yet). "
                       "Skipping the LSTM; see the README for setup.")
     import tensorflow as tf
     from synthetic import generate_training_data, set_seed
