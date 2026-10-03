@@ -150,7 +150,8 @@ def simulate_trajectory_3d(
     max_time: float = None,
     include_drag: bool = True,
     restitution: float = None,
-    gravity: float = None
+    gravity: float = None,
+    restitution_decay: float = 0.95
 ) -> Dict[str, Any]:
     """
     Simulate 3D ball trajectory with physics.
@@ -168,6 +169,8 @@ def simulate_trajectory_3d(
         include_drag: Whether to include air resistance
         restitution: Coefficient of restitution for bounces (default from config)
         gravity: Gravitational acceleration in m/s^2 (default from config)
+        restitution_decay: Factor applied to the restitution once per bounce, so
+            bounce n uses restitution * restitution_decay**n (1.0 = constant)
 
     Returns:
         Dictionary with keys:
@@ -177,10 +180,10 @@ def simulate_trajectory_3d(
             - ballColor: Hex color string
     """
     # Use config defaults
-    dt = dt or config.SIMULATION_DT
-    max_time = max_time or config.MAX_SIMULATION_TIME
+    dt = dt if dt is not None else config.SIMULATION_DT
+    max_time = max_time if max_time is not None else config.MAX_SIMULATION_TIME
     restitution = restitution if restitution is not None else ball.restitution
-    gravity = gravity or config.GRAVITY
+    gravity = gravity if gravity is not None else config.GRAVITY
 
     positions = []
     times = []
@@ -208,20 +211,21 @@ def simulate_trajectory_3d(
                 drag_mag = ball.drag_factor * speed ** 2
                 acc -= (vel / speed) * drag_mag
 
-        # Velocity Verlet integration (first half step)
-        vel_half = vel + acc * (dt / 2)
-        pos = pos + vel_half * dt
+        # Velocity Verlet step. Drag depends on velocity, so the acceleration
+        # at the end of the step needs a velocity estimate: use a forward-Euler
+        # prediction of the end-of-step velocity, then average the two
+        # accelerations (second-order accurate).
+        pos = pos + vel * dt + 0.5 * acc * dt ** 2
+        vel_pred = vel + acc * dt
 
-        # Recalculate acceleration at new position
         acc_new = np.array([0.0, -gravity, 0.0])
         if include_drag:
-            speed = np.linalg.norm(vel_half)
+            speed = np.linalg.norm(vel_pred)
             if speed > 1e-10:
                 drag_mag = ball.drag_factor * speed ** 2
-                acc_new -= (vel_half / speed) * drag_mag
+                acc_new -= (vel_pred / speed) * drag_mag
 
-        # Complete velocity update
-        vel = vel_half + acc_new * (dt / 2)
+        vel = vel + 0.5 * (acc + acc_new) * dt
 
         # Ground collision detection and response
         if pos[1] <= ball.radius:
@@ -230,9 +234,8 @@ def simulate_trajectory_3d(
             impact_velocity = abs(vel[1])
 
             if impact_velocity > min_vel and bounce_count < max_bounces:
-                # Apply restitution with decay for energy loss
-                # Increase decay from 0.995 to 0.95 for more realistic "dying out"
-                effective_restitution = restitution * (0.95 ** bounce_count)
+                # Apply restitution with a per-bounce decay for extra energy loss
+                effective_restitution = restitution * (restitution_decay ** bounce_count)
                 vel[1] = -vel[1] * effective_restitution
 
                 # Friction reduces horizontal velocity (increase friction slightly)

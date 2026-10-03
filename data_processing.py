@@ -91,6 +91,7 @@ def clean_sensor_data(df: pd.DataFrame) -> pd.DataFrame:
     # Find where the ball has settled (many consecutive invalid readings at the end)
     # This indicates the ball is at rest on the ground (too close for sensor)
     invalid_indices = np.where(invalid_mask)[0]
+    clamped_from = None
 
     if len(invalid_indices) > 0:
         # Check for trailing sequence of invalid readings
@@ -110,11 +111,16 @@ def clean_sensor_data(df: pd.DataFrame) -> pd.DataFrame:
             if trailing_count > 5:
                 # Use SENSOR_HEIGHT_CM as distance (ball at floor = height 0)
                 df_clean.loc[last_valid_idx + 1:, 'distance_cm'] = SENSOR_HEIGHT_CM
+                clamped_from = last_valid_idx + 1
                 logger.debug(f"Clamped {trailing_count} trailing readings to ground level")
 
-    # Now handle remaining invalid readings in the middle (interpolate)
-    # Re-check which are still invalid after trailing fix
+    # Now handle remaining invalid readings in the middle (interpolate).
+    # The trailing run clamped above is set to SENSOR_HEIGHT_CM, which is itself
+    # above MAX_SENSOR_READING, so it has to be excluded here or it would be
+    # turned back into NaN and filled with the last valid value.
     still_invalid = df_clean['distance_cm'] >= MAX_SENSOR_READING
+    if clamped_from is not None:
+        still_invalid.loc[clamped_from:] = False
     df_clean.loc[still_invalid, 'distance_cm'] = np.nan
     df_clean['distance_cm'] = df_clean['distance_cm'].interpolate(method='linear')
     df_clean['distance_cm'] = df_clean['distance_cm'].ffill().bfill()
@@ -290,3 +296,38 @@ def extend_trajectory_with_physics(
         ext_height.append(h)
 
     return np.array(ext_time), np.array(ext_height)
+
+
+def valid_reading_mask(
+    raw_time_ms: np.ndarray,
+    raw_distance_cm: np.ndarray,
+    grid_time_s: np.ndarray,
+    tolerance_ms: float = 15.0
+) -> np.ndarray:
+    """
+    Mark which points of a processed (resampled) trajectory sit next to a real reading.
+
+    The sensor reports MAX_SENSOR_READING or more when it loses the ball. Cleaning
+    fills those gaps by interpolation, so those samples are guesses, not
+    measurements. This returns True only where a valid raw reading lies within
+    `tolerance_ms` of the grid time.
+
+    Args:
+        raw_time_ms: Raw sample times in milliseconds
+        raw_distance_cm: Raw distance readings in centimetres
+        grid_time_s: Times of the processed trajectory in seconds
+        tolerance_ms: Maximum distance to the nearest valid raw sample
+
+    Returns:
+        Boolean array, same length as grid_time_s
+    """
+    raw_time_ms = np.asarray(raw_time_ms, dtype=float)
+    valid_t = raw_time_ms[np.asarray(raw_distance_cm) < MAX_SENSOR_READING]
+    grid_ms = np.asarray(grid_time_s, dtype=float) * 1000.0
+    if len(valid_t) == 0:
+        return np.zeros(len(grid_ms), dtype=bool)
+    idx = np.searchsorted(valid_t, grid_ms)
+    left = valid_t[np.clip(idx - 1, 0, len(valid_t) - 1)]
+    right = valid_t[np.clip(idx, 0, len(valid_t) - 1)]
+    nearest = np.minimum(np.abs(grid_ms - left), np.abs(grid_ms - right))
+    return nearest <= tolerance_ms
