@@ -319,7 +319,8 @@ class TrajectoryPredictor:
             max_iterations: Maximum prediction iterations (prevents infinite loop)
 
         Returns:
-            Full trajectory of shape (total_steps, 2)
+            Full trajectory of shape (total_steps, 2): normalised (time, height),
+            starting with the input window
 
         Raises:
             ValueError: If model not trained
@@ -336,26 +337,49 @@ class TrajectoryPredictor:
             )
             initial_sequence = np.vstack([padding, initial_sequence])
 
-        trajectory = list(initial_sequence[-self.sequence_length:])
-        current = initial_sequence[-self.sequence_length:].copy()
+        # Rows are (time, height, velocity), normalised. The network predicts
+        # (time, height) pairs; time is deterministic, so each predicted point
+        # gets the next time on the regular grid, and velocity is recomputed
+        # from heights the same way it is for training data.
+        dt_norm = 0.02 / (self.norm_params.time_max - self.norm_params.time_min)
+        rows = np.array(initial_sequence[-self.sequence_length:], dtype=float)
+        times = list(rows[:, 0])
+        heights = list(rows[:, 1])
         iterations = 0
 
-        while len(trajectory) < total_steps and iterations < max_iterations:
-            pred = self.predict(current)
+        while len(heights) < total_steps and iterations < max_iterations:
+            pred = self.predict(rows)
 
             if pred is None or len(pred) == 0:
                 logger.warning("Empty prediction, stopping")
                 break
 
             for point in pred:
-                trajectory.append(point)
-                if len(trajectory) >= total_steps:
+                times.append(times[-1] + dt_norm)
+                heights.append(float(np.clip(point[1], 0.0, 1.0)))
+                if len(heights) >= total_steps:
                     break
 
-            current = np.array(trajectory[-self.sequence_length:])
+            rows = self._with_velocity(
+                np.column_stack([times[-self.sequence_length:],
+                                 heights[-self.sequence_length:]])
+            )
             iterations += 1
 
-        return np.array(trajectory[:total_steps])
+        return np.column_stack([times, heights])[:total_steps]
+
+    @staticmethod
+    def _with_velocity(pairs: np.ndarray) -> np.ndarray:
+        """Append velocity (forward difference, last row backward) to (time, height) rows."""
+        n = len(pairs)
+        vel = np.zeros(n)
+        dt = np.diff(pairs[:, 0])
+        dh = np.diff(pairs[:, 1])
+        ok = dt > 1e-8
+        vel[:-1][ok] = dh[ok] / dt[ok]
+        if n > 1 and ok[-1]:
+            vel[-1] = dh[-1] / dt[-1]
+        return np.column_stack([pairs, vel])
 
     def prepare_initial_sequence(
         self,

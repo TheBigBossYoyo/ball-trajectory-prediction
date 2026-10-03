@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 RANDOM_SEED = config.RANDOM_SEED
 GRAVITY = config.GRAVITY
 AIR_DENSITY = config.AIR_DENSITY
+MODEL_DT = 0.02  # time step of every trajectory the LSTM sees (50 Hz)
 
 
 def set_seed(seed: int = RANDOM_SEED) -> None:
@@ -83,7 +84,7 @@ def generate_falling_trajectory(
     trajectory = [(time, height)]
     bounce_count = 0
 
-    max_points = 500  # Prevent runaway trajectories
+    max_points = 500  # Prevent runaway trajectories (500 steps = 10 s)
     # Use ball_radius as ground level (consistent with physics.py)
     ground_level = ball_radius
 
@@ -274,8 +275,11 @@ def load_real_trajectories(data_files: List[str]) -> List[np.ndarray]:
 
         try:
             time_s, _, height_m = process_sensor_csv(filepath)
+            # Resample to the same 20 ms step the synthetic trajectories use
+            grid = np.arange(time_s[0], time_s[-1], MODEL_DT)
+            height_m = np.interp(grid, time_s, height_m)
             # Create trajectory array (time, height)
-            traj = np.column_stack([time_s, height_m])
+            traj = np.column_stack([grid, height_m])
             trajectories.append(traj)
             logger.debug(f"Loaded real trajectory from {filepath}: {len(traj)} points")
         except Exception as e:
@@ -286,41 +290,85 @@ def load_real_trajectories(data_files: List[str]) -> List[np.ndarray]:
 
 def augment_trajectory(
     traj: np.ndarray,
-    target_length: int,
-    noise_scale: float = 0.01
+    target_length: int = None,
+    noise_scale: float = 0.005
 ) -> np.ndarray:
     """
     Augment a trajectory with noise and scaling for training variety.
 
+    Noise is added to the (normalised) height only, so time stays monotonic.
+
     Args:
-        traj: Original trajectory
-        target_length: Required output length
-        noise_scale: Standard deviation of noise to add
+        traj: Original trajectory of (time, height) rows
+        target_length: If given, pad/truncate to this length (start-padded);
+            if None, return the full augmented trajectory
+        noise_scale: Standard deviation of height noise (normalised units)
 
     Returns:
-        Augmented trajectory
+        Augmented trajectory with rows (time, height, velocity), normalised
     """
-    # Normalize using global bounds
     traj_norm = _normalize_trajectory_global(traj.copy())
 
-    # Add small noise
-    noise = np.random.normal(0, noise_scale, traj_norm.shape)
-    traj_norm += noise
+    traj_norm[:, 1] += np.random.normal(0, noise_scale, len(traj_norm))
 
     # Random height scaling (simulate different drop heights)
     scale = np.random.uniform(0.8, 1.2)
     traj_norm[:, 1] *= scale
 
-    # Clip and pad
-    traj_norm = np.clip(traj_norm, 0, 1)
-    # Add velocity feature before padding
+    traj_norm[:, 1] = np.clip(traj_norm[:, 1], 0, 1)
     traj_norm = _add_velocity_feature(traj_norm)
+    if target_length is None:
+        return traj_norm
     return _pad_or_truncate(traj_norm, target_length)
+
+
+def sample_window(
+    traj: np.ndarray,
+    sequence_length: int,
+    prediction_steps: int,
+    rng: np.random.RandomState
+) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Cut one (input, target) window out of a full normalised trajectory.
+
+    The window can start anywhere, including before the trajectory begins
+    (the missing history is filled with the first row, which is what
+    inference does when only a short prefix is known). If the window runs
+    past the end, the ball is treated as resting: height and velocity stay
+    at their last values (velocity 0) and time keeps advancing.
+
+    Args:
+        traj: Array of rows (time, height, velocity), normalised
+        sequence_length: Number of input rows
+        prediction_steps: Number of target rows
+        rng: Random generator
+
+    Returns:
+        (X of shape (sequence_length, 3), y of shape (prediction_steps, 2))
+        where y holds (time, height) pairs
+    """
+    n = len(traj)
+    dt_norm = MODEL_DT / config.TIME_MAX
+    first_start = -(sequence_length - 5)
+    last_start = max(first_start + 1, n - sequence_length - prediction_steps // 2)
+    start = rng.randint(first_start, last_start + 1)
+
+    rows = []
+    for i in range(start, start + sequence_length + prediction_steps):
+        if i < 0:
+            rows.append(traj[0])
+        elif i < n:
+            rows.append(traj[i])
+        else:
+            t = traj[-1, 0] + (i - n + 1) * dt_norm
+            rows.append([t, traj[-1, 1], 0.0])
+    rows = np.clip(np.array(rows), 0, 1)
+    return rows[:sequence_length], rows[sequence_length:, :2]
 
 
 def generate_synthetic_dataset(
     num_trajectories: int = 1000,
-    fixed_length: int = 200,
+    fixed_length: Optional[int] = 200,
     seed: int = RANDOM_SEED
 ) -> List[np.ndarray]:
     """
@@ -330,7 +378,7 @@ def generate_synthetic_dataset(
 
     Args:
         num_trajectories: Number of trajectories to generate
-        fixed_length: Length of each trajectory
+        fixed_length: Length of each trajectory (None keeps the full length)
         seed: Random seed for reproducibility
 
     Returns:
@@ -366,7 +414,8 @@ def generate_synthetic_dataset(
         traj_array = np.array(traj)
         traj_array = _normalize_trajectory_global(traj_array)
         traj_array = _add_velocity_feature(traj_array)  # Add velocity as 3rd feature
-        traj_array = _pad_or_truncate(traj_array, fixed_length)
+        if fixed_length is not None:
+            traj_array = _pad_or_truncate(traj_array, fixed_length)
         trajectories.append(traj_array)
 
     return trajectories
@@ -378,7 +427,8 @@ def generate_training_data(
     prediction_steps: int = None,
     seed: int = None,
     include_real_data: bool = True,
-    real_data_files: Optional[List[str]] = None
+    real_data_files: Optional[List[str]] = None,
+    windows_per_trajectory: int = 4
 ) -> Tuple[np.ndarray, np.ndarray]:
     """
     Generate training data for LSTM model.
@@ -393,11 +443,12 @@ def generate_training_data(
         seed: Random seed (default from config)
         include_real_data: Whether to include augmented real sensor data
         real_data_files: List of real data CSV files
+        windows_per_trajectory: Random windows cut from each trajectory
 
     Returns:
         Tuple of (X, y) arrays:
-            X: Input sequences of shape (num_samples, sequence_length, 2)
-            y: Target outputs of shape (num_samples, prediction_steps, 2)
+            X: Input windows of shape (N, sequence_length, 3): time, height, velocity
+            y: Targets of shape (N, prediction_steps, 2): time, height
     """
     # Use config defaults
     num_samples = num_samples or config.TRAINING_SAMPLES
@@ -406,38 +457,39 @@ def generate_training_data(
     seed = seed or config.RANDOM_SEED
 
     set_seed(seed)
-    total_length = sequence_length + prediction_steps
+    rng = np.random.RandomState(seed)
 
-    # Calculate how many synthetic samples to generate
-    real_augmentations = 0
+    # Real sensor files used for training (other files are held out by the caller)
     if include_real_data:
         if real_data_files is None:
-            # Use default data files
             real_data_files = [f for f in config.DATA_FILES if os.path.exists(f)]
-        real_augmentations = len(real_data_files) * 20  # 20 augmentations per real trajectory
+    else:
+        real_data_files = []
 
+    real_augmentations = len(real_data_files) * 20  # 20 augmented copies per real trajectory
     synthetic_count = max(0, num_samples - real_augmentations)
 
-    # Generate synthetic trajectories
-    trajectories = generate_synthetic_dataset(synthetic_count, total_length, seed)
+    # Full-length (unpadded) trajectories; windows are cut from them below
+    trajectories = generate_synthetic_dataset(synthetic_count, None, seed)
     logger.info(f"Generated {len(trajectories)} synthetic trajectories")
 
-    # Add augmented real data
-    if include_real_data and real_data_files:
+    if real_data_files:
         real_trajs = load_real_trajectories(real_data_files)
         for traj in real_trajs:
-            # Create multiple augmentations of each real trajectory
             for _ in range(20):
-                augmented = augment_trajectory(traj, total_length)
-                trajectories.append(augmented)
+                trajectories.append(augment_trajectory(traj))
         logger.info(f"Added {len(real_trajs) * 20} augmented real trajectories")
 
-    # Shuffle trajectories
     random.shuffle(trajectories)
 
-    # Create X, y pairs
-    X = np.array([t[:sequence_length] for t in trajectories])
-    y = np.array([t[sequence_length:total_length] for t in trajectories])
+    X_list, y_list = [], []
+    for traj in trajectories:
+        for _ in range(windows_per_trajectory):
+            xw, yw = sample_window(traj, sequence_length, prediction_steps, rng)
+            X_list.append(xw)
+            y_list.append(yw)
+    X = np.array(X_list)
+    y = np.array(y_list)
 
     logger.info(f"Training data: X shape {X.shape}, y shape {y.shape}")
 
