@@ -31,7 +31,11 @@ def test_sample_window_shapes_and_range():
     for _ in range(20):
         x, y = syn.sample_window(traj, 50, 10, rng)
         assert x.shape == (50, 3) and y.shape == (10, 2)
-        assert x.min() >= 0 and x.max() <= 1 and y.min() >= 0 and y.max() <= 1
+        assert x[:, :2].min() >= 0 and x[:, :2].max() <= 1 and y.min() >= 0 and y.max() <= 1
+    # falling ball: the signed velocity feature must survive (it was once clipped to >= 0)
+    fall = syn.augment_trajectory(np.column_stack([np.arange(0, 1, 0.02), np.linspace(0.6, 0.1, 50)]))
+    x, _ = syn.sample_window(fall, 50, 10, np.random.RandomState(1))
+    assert x[:, 2].min() < 0
 
 
 def test_sample_window_past_end_is_a_resting_ball():

@@ -362,7 +362,8 @@ def sample_window(
         else:
             t = traj[-1, 0] + (i - n + 1) * dt_norm
             rows.append([t, traj[-1, 1], 0.0])
-    rows = np.clip(np.array(rows), 0, 1)
+    rows = np.array(rows)
+    rows[:, :2] = np.clip(rows[:, :2], 0, 1)  # time and height only; velocity is signed
     return rows[:sequence_length], rows[sequence_length:, :2]
 
 
